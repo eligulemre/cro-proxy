@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-      const model = body.model || 'gemini-1.5-flash-001';
+      const model = body.model || 'gemini-1.5-flash';
 
       // Anthropic mesaj formatını Gemini'ye çevir
       const parts = [];
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       }
 
       const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
