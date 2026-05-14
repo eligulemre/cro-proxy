@@ -65,7 +65,8 @@ export default async function handler(req, res) {
 
       if (action === 'getFunnel') {
         const result = await sbFetch(`funnel_data?brand_id=eq.${rest.brand_id}&order=created_at.desc&limit=1`);
-        return res.status(200).json(Array.isArray(result) ? result[0] : result);
+        const row = Array.isArray(result) ? result[0] : result;
+        return res.status(200).json(row || null);
       }
 
       if (action === 'uploadImage') {
@@ -96,7 +97,7 @@ export default async function handler(req, res) {
 
       if (action === 'getImages') {
         const result = await sbFetch(`page_images?brand_id=eq.${rest.brand_id}&order=step_index.asc`);
-        return res.status(200).json(result);
+        return res.status(200).json(Array.isArray(result) ? result : []);
       }
 
       return res.status(400).json({ error: 'Unknown action: ' + action });
