@@ -100,6 +100,12 @@ export default async function handler(req, res) {
         return res.status(200).json(Array.isArray(result) ? result : []);
       }
 
+      if (action === 'deleteImage') {
+        const { brand_id, step_index, image_type } = rest;
+        await sbFetch(`page_images?brand_id=eq.${brand_id}&step_index=eq.${step_index}&image_type=eq.${image_type}`, 'DELETE');
+        return res.status(200).json({ ok: true });
+      }
+
       return res.status(400).json({ error: 'Unknown action: ' + action });
     } catch (err) {
       console.error('Supabase error:', err.message);
