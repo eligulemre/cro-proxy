@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-      const model = body.model || 'gemini-1.5-flash';
+      const model = body.model || 'gemini-1.5-flash-001';
 
       // Anthropic mesaj formatını Gemini'ye çevir
       const parts = [];
