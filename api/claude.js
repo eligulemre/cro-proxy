@@ -5,14 +5,21 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { action, provider, ...body } = req.body;
+  let body;
+  try {
+    body = req.body;
+  } catch(e) {
+    return res.status(400).json({ error: 'Body parse error: ' + e.message });
+  }
+
+  const { action, provider, ...rest } = body || {};
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY;
 
   // ── SUPABASE ACTIONS ──────────────────────────────────────────
   if (action) {
-    const sbFetch = (path, method = 'GET', data) =>
-      fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    const sbFetch = async (path, method = 'GET', data) => {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -21,29 +28,20 @@ export default async function handler(req, res) {
           'Prefer': method === 'POST' ? 'return=representation' : '',
         },
         body: data ? JSON.stringify(data) : undefined,
-      }).then(r => r.json());
-
-    const sbStorage = (path, method, body, contentType) =>
-      fetch(`${SUPABASE_URL}/storage/v1/${path}`, {
-        method,
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          ...(contentType ? { 'Content-Type': contentType } : {}),
-        },
-        body,
-      }).then(r => r.json());
+      });
+      const text = await r.text();
+      if (!r.ok) throw new Error(`Supabase ${method} ${path} → ${r.status}: ${text.substring(0,200)}`);
+      try { return JSON.parse(text); } catch(e) { return text; }
+    };
 
     try {
-      // Marka listesi
       if (action === 'getBrands') {
         const brands = await sbFetch('brands?order=created_at.asc');
         return res.status(200).json(brands);
       }
 
-      // Marka kaydet
       if (action === 'saveBrand') {
-        const { id, name, url } = body;
+        const { id, name, url } = rest;
         let result;
         if (id) {
           result = await sbFetch(`brands?id=eq.${id}`, 'PATCH', { name, url, updated_at: new Date().toISOString() });
@@ -53,36 +51,28 @@ export default async function handler(req, res) {
         return res.status(200).json(Array.isArray(result) ? result[0] : result);
       }
 
-      // Marka sil
       if (action === 'deleteBrand') {
-        await sbFetch(`brands?id=eq.${body.id}`, 'DELETE');
+        await sbFetch(`brands?id=eq.${rest.id}`, 'DELETE');
         return res.status(200).json({ ok: true });
       }
 
-      // Funnel verisi kaydet
       if (action === 'saveFunnel') {
-        const { brand_id, meta, rows } = body;
-        // Önce eskiyi sil
+        const { brand_id, meta, rows } = rest;
         await sbFetch(`funnel_data?brand_id=eq.${brand_id}`, 'DELETE');
         const result = await sbFetch('funnel_data', 'POST', { brand_id, meta, rows });
         return res.status(200).json(Array.isArray(result) ? result[0] : result);
       }
 
-      // Funnel verisi getir
       if (action === 'getFunnel') {
-        const result = await sbFetch(`funnel_data?brand_id=eq.${body.brand_id}&order=created_at.desc&limit=1`);
+        const result = await sbFetch(`funnel_data?brand_id=eq.${rest.brand_id}&order=created_at.desc&limit=1`);
         return res.status(200).json(Array.isArray(result) ? result[0] : result);
       }
 
-      // Görsel yükle
       if (action === 'uploadImage') {
-        const { brand_id, step_index, step_name, image_type, base64, mime_type } = body;
+        const { brand_id, step_index, step_name, image_type, base64, mime_type } = rest;
         const path = `${brand_id}/${step_index}_${image_type}_${Date.now()}.png`;
-
-        // Base64'ü binary'e çevir
         const binary = Buffer.from(base64, 'base64');
 
-        // Storage'a yükle
         const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/cro-images/${path}`, {
           method: 'POST',
           headers: {
@@ -99,22 +89,19 @@ export default async function handler(req, res) {
         }
 
         const public_url = `${SUPABASE_URL}/storage/v1/object/public/cro-images/${path}`;
-
-        // DB'ye kaydet (upsert)
         await sbFetch(`page_images?brand_id=eq.${brand_id}&step_index=eq.${step_index}&image_type=eq.${image_type}`, 'DELETE');
         await sbFetch('page_images', 'POST', { brand_id, step_index, step_name, image_type, storage_path: public_url });
-
         return res.status(200).json({ url: public_url });
       }
 
-      // Görselleri getir
       if (action === 'getImages') {
-        const result = await sbFetch(`page_images?brand_id=eq.${body.brand_id}&order=step_index.asc`);
+        const result = await sbFetch(`page_images?brand_id=eq.${rest.brand_id}&order=step_index.asc`);
         return res.status(200).json(result);
       }
 
       return res.status(400).json({ error: 'Unknown action: ' + action });
     } catch (err) {
+      console.error('Supabase error:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -124,9 +111,9 @@ export default async function handler(req, res) {
     if (provider === 'gemini') {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
-      const model = body.model || 'gemini-2.5-flash-lite';
+      const model = rest.model || 'gemini-2.5-flash-lite';
       const parts = [];
-      for (const msg of (body.messages || [])) {
+      for (const msg of (rest.messages || [])) {
         if (Array.isArray(msg.content)) {
           for (const c of msg.content) {
             if (c.type === 'text') parts.push({ text: c.text });
@@ -143,7 +130,7 @@ export default async function handler(req, res) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts }],
-            generationConfig: { maxOutputTokens: body.max_tokens || 4000, temperature: 0.3 }
+            generationConfig: { maxOutputTokens: rest.max_tokens || 4000, temperature: 0.3 }
           })
         }
       );
@@ -157,12 +144,13 @@ export default async function handler(req, res) {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(rest)
       });
       const data = await response.json();
       return res.status(response.status).json(data);
     }
   } catch (err) {
+    console.error('AI proxy error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 }
