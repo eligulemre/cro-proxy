@@ -123,8 +123,20 @@ export default async function handler(req, res) {
       for (const msg of (rest.messages || [])) {
         if (Array.isArray(msg.content)) {
           for (const c of msg.content) {
-            if (c.type === 'text') parts.push({ text: c.text });
-            else if (c.type === 'image') parts.push({ inlineData: { mimeType: c.source.media_type, data: c.source.data } });
+            if (c.type === 'text') {
+              parts.push({ text: c.text });
+            } else if (c.type === 'image') {
+              if (c.source.type === 'base64') {
+                parts.push({ inlineData: { mimeType: c.source.media_type, data: c.source.data } });
+              } else if (c.source.type === 'url') {
+                // URL'yi fetch edip base64'e çevir
+                const imgRes = await fetch(c.source.url);
+                const imgBuf = await imgRes.arrayBuffer();
+                const imgBase64 = Buffer.from(imgBuf).toString('base64');
+                const mimeType = imgRes.headers.get('content-type') || 'image/png';
+                parts.push({ inlineData: { mimeType, data: imgBase64 } });
+              }
+            }
           }
         } else {
           parts.push({ text: msg.content });
