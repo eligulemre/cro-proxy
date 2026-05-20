@@ -143,10 +143,11 @@ export default async function handler(req, res) {
 
   // ── AI PROXY ──────────────────────────────────────────────────
   try {
-    if (provider === 'gemini') {
+    if (provider === 'gemini' || provider === 'gemini-20') {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
-      const model = rest.model || 'gemini-2.5-flash-lite';
+      const primaryModel = rest.model || (provider === 'gemini-20' ? 'gemini-2.0-flash' : 'gemini-2.5-flash-lite');
+      const fallbackModel = 'gemini-2.0-flash';
       const parts = [];
       for (const msg of (rest.messages || [])) {
         if (Array.isArray(msg.content)) {
@@ -170,21 +171,35 @@ export default async function handler(req, res) {
           parts.push({ text: msg.content });
         }
       }
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts }],
-            generationConfig: { maxOutputTokens: rest.max_tokens || 4000, temperature: 0.3 }
-          })
-        }
-      );
-      const data = await geminiRes.json();
+      const callGemini = async (model) => {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts }],
+              generationConfig: { maxOutputTokens: rest.max_tokens || 4000, temperature: 0.3 }
+            })
+          }
+        );
+        return { res: r, data: await r.json() };
+      };
+
+      let { res: geminiRes, data } = await callGemini(primaryModel);
+
+      // Rate limit (429) veya quota (403) hatası → fallback modele geç
+      if (!geminiRes.ok && (geminiRes.status === 429 || geminiRes.status === 403 || data?.error?.code === 429)) {
+        console.log(`${primaryModel} limit aşıldı, ${fallbackModel} deneniyor...`);
+        const fallback = await callGemini(fallbackModel);
+        geminiRes = fallback.res;
+        data = fallback.data;
+      }
+
       if (!geminiRes.ok) return res.status(geminiRes.status).json(data);
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return res.status(200).json({ content: [{ type: 'text', text }] });
+      const usedModel = geminiRes.ok ? (data.modelVersion || primaryModel) : fallbackModel;
+      return res.status(200).json({ content: [{ type: 'text', text }], model: usedModel });
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
