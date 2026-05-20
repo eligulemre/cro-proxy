@@ -106,6 +106,34 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      if (action === 'saveHypotheses') {
+        const { brand_id, hypotheses } = rest;
+        // Önce eskiyi sil
+        await sbFetch(`hypotheses?brand_id=eq.${brand_id}`, 'DELETE');
+        // Tüm hipotezleri kaydet
+        const result = await sbFetch('hypotheses', 'POST', { brand_id, hypotheses });
+        return res.status(200).json(Array.isArray(result) ? result[0] : result);
+      }
+
+      if (action === 'getHypotheses') {
+        const result = await sbFetch(`hypotheses?brand_id=eq.${rest.brand_id}&order=created_at.desc&limit=1`);
+        const row = Array.isArray(result) ? result[0] : result;
+        return res.status(200).json(row || null);
+      }
+
+      if (action === 'deleteHypothesis') {
+        // Tek bir hipotezi sil (index bazlı)
+        const { brand_id, step, idx } = rest;
+        const result = await sbFetch(`hypotheses?brand_id=eq.${brand_id}&order=created_at.desc&limit=1`);
+        const row = Array.isArray(result) ? result[0] : result;
+        if(row && row.hypotheses) {
+          row.hypotheses.splice(idx, 1);
+          await sbFetch(`hypotheses?brand_id=eq.${brand_id}`, 'DELETE');
+          await sbFetch('hypotheses', 'POST', { brand_id, hypotheses: row.hypotheses });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
       return res.status(400).json({ error: 'Unknown action: ' + action });
     } catch (err) {
       console.error('Supabase error:', err.message);
