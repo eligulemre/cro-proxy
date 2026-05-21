@@ -149,14 +149,18 @@ export default async function handler(req, res) {
 
       // ── HAFIZA ACTIONS ──────────────────────────────────────────
       if (action === 'getMemory') {
-        const result = await sbFetch(`brands?id=eq.${rest.brand_id}&select=test_memory`);
+        const result = await sbFetch(`brands?id=eq.${rest.brand_id}&select=test_memory,memory_processed_ids`);
         const row = Array.isArray(result) ? result[0] : result;
-        return res.status(200).json({ memory: row?.test_memory || null });
+        return res.status(200).json({
+          memory: row?.test_memory || null,
+          processedIds: row?.memory_processed_ids || []
+        });
       }
 
       if (action === 'saveMemory') {
         await sbFetch(`brands?id=eq.${rest.brand_id}`, 'PATCH', {
           test_memory: rest.memory,
+          memory_processed_ids: rest.processedIds || [],
           updated_at: new Date().toISOString()
         });
         return res.status(200).json({ ok: true });
