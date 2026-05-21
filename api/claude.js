@@ -149,7 +149,7 @@ export default async function handler(req, res) {
 
       // ── HAFIZA ACTIONS ──────────────────────────────────────────
       if (action === 'getMemory') {
-        const result = await sbFetch(`brands?id=eq.${rest.brand_id}&select=test_memory,memory_processed_ids`);
+        const result = await sbFetch('global_memory?order=id.asc&limit=1');
         const row = Array.isArray(result) ? result[0] : result;
         return res.status(200).json({
           memory: row?.test_memory || null,
@@ -158,7 +158,7 @@ export default async function handler(req, res) {
       }
 
       if (action === 'saveMemory') {
-        await sbFetch(`brands?id=eq.${rest.brand_id}`, 'PATCH', {
+        await sbFetch('global_memory?id=eq.1', 'PATCH', {
           test_memory: rest.memory,
           memory_processed_ids: rest.processedIds || [],
           updated_at: new Date().toISOString()
