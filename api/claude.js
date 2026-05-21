@@ -41,12 +41,12 @@ export default async function handler(req, res) {
       }
 
       if (action === 'saveBrand') {
-        const { id, name, url } = rest;
+        const { id, name, url, sector, site_url } = rest;
         let result;
         if (id) {
-          result = await sbFetch(`brands?id=eq.${id}`, 'PATCH', { name, url, updated_at: new Date().toISOString() });
+          result = await sbFetch(`brands?id=eq.${id}`, 'PATCH', { name, url, sector, site_url, updated_at: new Date().toISOString() });
         } else {
-          result = await sbFetch('brands', 'POST', { name, url });
+          result = await sbFetch('brands', 'POST', { name, url, sector, site_url });
         }
         return res.status(200).json(Array.isArray(result) ? result[0] : result);
       }
@@ -119,6 +119,22 @@ export default async function handler(req, res) {
         const result = await sbFetch(`hypotheses?brand_id=eq.${rest.brand_id}&order=created_at.desc&limit=1`);
         const row = Array.isArray(result) ? result[0] : result;
         return res.status(200).json(row || null);
+      }
+
+      if (action === 'savePastTest') {
+        const { brand_id, page, hypothesis, variant, result: testResult, impact, learnings } = rest;
+        const result = await sbFetch('past_tests', 'POST', { brand_id, page, hypothesis, variant, result: testResult, impact, learnings });
+        return res.status(200).json(Array.isArray(result) ? result[0] : result);
+      }
+
+      if (action === 'getPastTests') {
+        const result = await sbFetch(`past_tests?brand_id=eq.${rest.brand_id}&order=created_at.desc`);
+        return res.status(200).json(Array.isArray(result) ? result : []);
+      }
+
+      if (action === 'deletePastTest') {
+        await sbFetch(`past_tests?id=eq.${rest.id}`, 'DELETE');
+        return res.status(200).json({ ok: true });
       }
 
       if (action === 'deleteHypothesis') {
