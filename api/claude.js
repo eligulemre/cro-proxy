@@ -108,9 +108,7 @@ export default async function handler(req, res) {
 
       if (action === 'saveHypotheses') {
         const { brand_id, hypotheses } = rest;
-        // Önce eskiyi sil
         await sbFetch(`hypotheses?brand_id=eq.${brand_id}`, 'DELETE');
-        // Tüm hipotezleri kaydet
         const result = await sbFetch('hypotheses', 'POST', { brand_id, hypotheses });
         return res.status(200).json(Array.isArray(result) ? result[0] : result);
       }
@@ -138,8 +136,7 @@ export default async function handler(req, res) {
       }
 
       if (action === 'deleteHypothesis') {
-        // Tek bir hipotezi sil (index bazlı)
-        const { brand_id, step, idx } = rest;
+        const { brand_id, idx } = rest;
         const result = await sbFetch(`hypotheses?brand_id=eq.${brand_id}&order=created_at.desc&limit=1`);
         const row = Array.isArray(result) ? result[0] : result;
         if(row && row.hypotheses) {
@@ -147,6 +144,21 @@ export default async function handler(req, res) {
           await sbFetch(`hypotheses?brand_id=eq.${brand_id}`, 'DELETE');
           await sbFetch('hypotheses', 'POST', { brand_id, hypotheses: row.hypotheses });
         }
+        return res.status(200).json({ ok: true });
+      }
+
+      // ── HAFIZA ACTIONS ──────────────────────────────────────────
+      if (action === 'getMemory') {
+        const result = await sbFetch(`brands?id=eq.${rest.brand_id}&select=test_memory`);
+        const row = Array.isArray(result) ? result[0] : result;
+        return res.status(200).json({ memory: row?.test_memory || null });
+      }
+
+      if (action === 'saveMemory') {
+        await sbFetch(`brands?id=eq.${rest.brand_id}`, 'PATCH', {
+          test_memory: rest.memory,
+          updated_at: new Date().toISOString()
+        });
         return res.status(200).json({ ok: true });
       }
 
@@ -174,7 +186,6 @@ export default async function handler(req, res) {
               if (c.source.type === 'base64') {
                 parts.push({ inlineData: { mimeType: c.source.media_type, data: c.source.data } });
               } else if (c.source.type === 'url') {
-                // URL'yi fetch edip base64'e çevir
                 const imgRes = await fetch(c.source.url);
                 const imgBuf = await imgRes.arrayBuffer();
                 const imgBase64 = Buffer.from(imgBuf).toString('base64');
@@ -204,7 +215,6 @@ export default async function handler(req, res) {
 
       let { res: geminiRes, data } = await callGemini(primaryModel);
 
-      // Rate limit (429) veya quota (403) hatası → fallback modele geç
       if (!geminiRes.ok && (geminiRes.status === 429 || geminiRes.status === 403 || data?.error?.code === 429)) {
         console.log(`${primaryModel} limit aşıldı, ${fallbackModel} deneniyor...`);
         const fallback = await callGemini(fallbackModel);
