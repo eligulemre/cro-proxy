@@ -158,11 +158,22 @@ export default async function handler(req, res) {
       }
 
       if (action === 'saveMemory') {
-        await sbFetch('global_memory?id=eq.1', 'PATCH', {
-          test_memory: rest.memory,
-          memory_processed_ids: rest.processedIds || [],
-          updated_at: new Date().toISOString()
-        });
+        // Önce mevcut row'un ID'sini çek
+        const gmRow = await sbFetch('global_memory?order=id.asc&limit=1');
+        const gmId = Array.isArray(gmRow) ? gmRow[0]?.id : gmRow?.id;
+        if(gmId) {
+          await sbFetch(`global_memory?id=eq.${gmId}`, 'PATCH', {
+            test_memory: rest.memory,
+            memory_processed_ids: rest.processedIds || [],
+            updated_at: new Date().toISOString()
+          });
+        } else {
+          // Row yoksa insert et
+          await sbFetch('global_memory', 'POST', {
+            test_memory: rest.memory,
+            memory_processed_ids: rest.processedIds || []
+          });
+        }
         return res.status(200).json({ ok: true });
       }
 
